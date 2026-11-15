@@ -25,7 +25,64 @@ GEN = 100
 POP = 50
 EL_S = 2
 
-CSV_FILE = "program_ratings_modified_final.csv"
+
+# ==========================================
+# LOAD CSV DATASET
+# ==========================================
+
+from pathlib import Path
+
+# Get the folder where app.py is located
+BASE_DIR = Path(__file__).resolve().parent
+
+# Get the exact CSV location
+CSV_FILE = BASE_DIR / "program_ratings_modified_final.csv"
+
+
+@st.cache_data
+def load_dataset():
+
+    # Check whether the CSV exists
+    if not CSV_FILE.exists():
+
+        st.error("CSV dataset not found!")
+
+        st.write("Files available in the application folder:")
+
+        st.write([
+            file.name for file in BASE_DIR.iterdir()
+        ])
+
+        return None
+
+    # Read CSV file
+    df = pd.read_csv(CSV_FILE)
+
+    ratings = {}
+
+    for _, row in df.iterrows():
+
+        program = row["Type of Program"]
+
+        ratings[program] = [
+            float(row[f"Hour {hour}"])
+            for hour in range(6, 24)
+        ]
+
+    return df, ratings
+
+
+dataset = load_dataset()
+
+if dataset is None:
+    st.stop()
+
+df, ratings = dataset
+
+all_programs = list(ratings.keys())
+
+st.success("Dataset loaded successfully!")
+
 
 TIME_SLOTS = list(range(6, 24))
 
