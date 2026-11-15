@@ -1,10 +1,9 @@
-c
 import streamlit as st
 import pandas as pd
 import random
 import os
 
-
+import pathlib
 
 st.set_page_config(
     page_title="TV Scheduling Using Genetic Algorithm",
