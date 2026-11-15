@@ -287,11 +287,12 @@ with col1:
         key="co1"
     )
 
-    mut1 = st.slider(
-        "Mutation Rate",
-        0.01, 0.20, 0.05, 0.01,
-        key="mut1"
-    )
+    # Experiment 1
+mut1 = st.slider(
+    "Mutation Rate",
+    0.01, 0.05, 0.01, 0.01,
+    key="mut1"
+)
 
 
 with col2:
@@ -304,11 +305,13 @@ with col2:
         key="co2"
     )
 
-    mut2 = st.slider(
-        "Mutation Rate",
-        0.01, 0.20, 0.10, 0.01,
-        key="mut2"
-    )
+    # Experiment 2
+mut2 = st.slider(
+    "Mutation Rate",
+    0.01, 0.05, 0.03, 0.01,
+    key="mut2"
+)
+
 
 
 with col3:
@@ -321,11 +324,12 @@ with col3:
         key="co3"
     )
 
-    mut3 = st.slider(
-        "Mutation Rate",
-        0.01, 0.20, 0.20, 0.01,
-        key="mut3"
-    )
+   # Experiment 3
+mut3 = st.slider(
+    "Mutation Rate",
+    0.01, 0.05, 0.05, 0.01,
+    key="mut3"
+)
 
 
 if st.button(
