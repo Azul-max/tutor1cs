@@ -1,247 +1,264 @@
 
 import streamlit as st
 import pandas as pd
-import csv
 import random
-import itertools
 import os
 
+
+
 st.set_page_config(
-    page_title="TV Scheduling - Genetic Algorithm",
+    page_title="TV Scheduling Using Genetic Algorithm",
     page_icon="📺",
     layout="wide"
 )
 
 st.title("📺 TV Scheduling Using Genetic Algorithm")
+
 st.write(
-    "Adjust the Genetic Algorithm parameters and "
-    "generate television schedules."
+    "A Genetic Algorithm application to generate "
+    "TV schedules based on audience ratings."
 )
 
-CSV_FILE = "program_ratings_modified.csv"
-
-if not os.path.exists(CSV_FILE):
-    st.error(
-        f"CSV file '{CSV_FILE}' was not found. "
-        "Please place it in the same folder as app.py."
-    )
-    st.stop()
-
-
-def read_csv_to_dict(file_path):
-    program_ratings = {}
-
-    with open(file_path, mode="r", newline="") as file:
-        reader = csv.reader(file)
-        header = next(reader)
-
-        for row in reader:
-            program = row[0]
-            ratings = [float(x) for x in row[1:]]
-            program_ratings[program] = ratings
-
-    return program_ratings
-
-
-ratings = read_csv_to_dict(CSV_FILE)
-
-all_programs = list(ratings.keys())
-all_time_slots = list(range(6, 24))
 
 
 GEN = 100
 POP = 50
 EL_S = 2
 
+CSV_FILE = "program_ratings_modified_final.csv"
+
+TIME_SLOTS = list(range(6, 24))
+
+
+
+@st.cache_data
+def load_dataset():
+
+    if not os.path.exists(CSV_FILE):
+        return None
+
+    df = pd.read_csv(CSV_FILE)
+
+    ratings = {}
+
+    for _, row in df.iterrows():
+
+        program = row["Type of Program"]
+
+        ratings[program] = [
+            float(row[f"Hour {hour}"])
+            for hour in TIME_SLOTS
+        ]
+
+    return df, ratings
+
+
+dataset = load_dataset()
+
+if dataset is None:
+
+    st.error(
+        f"Dataset '{CSV_FILE}' was not found. "
+        "Please upload the CSV file into the same "
+        "GitHub repository as app.py."
+    )
+
+    st.stop()
+
+
+df, ratings = dataset
+
+all_programs = list(ratings.keys())
+
+
+
+
 def fitness_function(schedule):
+
     total_rating = 0
 
-    for time_slot, program in enumerate(schedule):
-        total_rating += ratings[program][time_slot]
+    for index, program in enumerate(schedule):
+
+        total_rating += ratings[program][index]
 
     return total_rating
 
 
-@st.cache_data
-def get_initial_best_schedule(ratings_data):
 
-    rating_dict = {
-        program: list(program_ratings)
-        for program, program_ratings in ratings_data
-    }
+def initialize_population(programs, population_size):
 
-    programs = list(rating_dict.keys())
+    population = []
 
-    def calculate_fitness(schedule):
-        total_rating = 0
+    for _ in range(population_size):
 
-        for time_slot, program in enumerate(schedule):
-            total_rating += rating_dict[program][time_slot]
+        individual = programs.copy()
 
-        return total_rating
+        random.shuffle(individual)
 
-    best_schedule = max(
-        itertools.permutations(programs),
-        key=calculate_fitness
+        population.append(individual)
+
+    return population
+
+
+
+def selection(population):
+
+    fitness_values = [
+        fitness_function(individual)
+        for individual in population
+    ]
+
+    selected = random.choices(
+        population,
+        weights=fitness_values,
+        k=2
     )
 
-    return list(best_schedule)
+    return selected[0], selected[1]
 
 
-ratings_data = tuple(
-    (program, tuple(values))
-    for program, values in ratings.items()
-)
-
-initial_best_schedule = get_initial_best_schedule(ratings_data)
 
 
-def crossover(schedule1, schedule2):
+def crossover(parent1, parent2, CO_R):
 
-    crossover_point = random.randint(
-        1, len(schedule1) - 2
+    if random.random() < CO_R:
+
+        point = random.randint(1, len(parent1) - 1)
+
+        child = parent1[:point]
+
+        for program in parent2:
+
+            if program not in child:
+                child.append(program)
+
+        return child
+
+    return parent1.copy()
+
+
+
+
+def mutate(individual, MUT_R):
+
+    individual = individual.copy()
+
+    if random.random() < MUT_R:
+
+        index1, index2 = random.sample(
+            range(len(individual)), 2
+        )
+
+        individual[index1], individual[index2] = (
+            individual[index2],
+            individual[index1]
+        )
+
+    return individual
+
+
+# ==========================================
+# GENETIC ALGORITHM
+# ==========================================
+
+def genetic_algorithm(CO_R, MUT_R, seed=42):
+
+    random.seed(seed)
+
+    population = initialize_population(
+        all_programs,
+        POP
     )
 
-    child1 = (
-        schedule1[:crossover_point]
-        + schedule2[crossover_point:]
-    )
+    best_history = []
 
-    child2 = (
-        schedule2[:crossover_point]
-        + schedule1[crossover_point:]
-    )
+    for generation in range(GEN):
 
-    return child1, child2
-
-
-def mutate(schedule):
-
-    mutation_point = random.randint(
-        0, len(schedule) - 1
-    )
-
-    new_program = random.choice(all_programs)
-
-    schedule[mutation_point] = new_program
-
-    return schedule
-
-
-def evaluate_fitness(schedule):
-    return fitness_function(schedule)
-
-
-def genetic_algorithm(
-    initial_schedule,
-    generations=GEN,
-    population_size=POP,
-    crossover_rate=0.8,
-    mutation_rate=0.03,
-    elitism_size=EL_S
-):
-
-    population = [initial_schedule]
-
-    for _ in range(population_size - 1):
-
-        random_schedule = initial_schedule.copy()
-
-        random.shuffle(random_schedule)
-
-        population.append(random_schedule)
-
-    for generation in range(generations):
-
-        new_population = []
-
-        population.sort(
-            key=lambda schedule: fitness_function(schedule),
+        # Sort population by fitness
+        population = sorted(
+            population,
+            key=fitness_function,
             reverse=True
         )
 
-        new_population.extend(
-            population[:elitism_size]
-        )
+        # Elitism
+        new_population = population[:EL_S]
 
-        while len(new_population) < population_size:
+        # Generate new population
+        while len(new_population) < POP:
 
-            parent1, parent2 = random.choices(
-                population,
-                k=2
+            parent1, parent2 = selection(population)
+
+            child = crossover(
+                parent1,
+                parent2,
+                CO_R
             )
 
-            if random.random() < crossover_rate:
-
-                child1, child2 = crossover(
-                    parent1, parent2
-                )
-
-            else:
-
-                child1 = parent1.copy()
-                child2 = parent2.copy()
-
-            if random.random() < mutation_rate:
-                child1 = mutate(child1)
-
-            if random.random() < mutation_rate:
-                child2 = mutate(child2)
-
-            new_population.extend(
-                [child1, child2]
+            child = mutate(
+                child,
+                MUT_R
             )
+
+            new_population.append(child)
 
         population = new_population
 
-    return population[0]
+        # Record best fitness
+        current_best = max(
+            fitness_function(individual)
+            for individual in population
+        )
 
+        best_history.append(current_best)
 
-def run_experiment(crossover_rate, mutation_rate):
-
-    genetic_schedule = genetic_algorithm(
-        initial_best_schedule,
-        generations=GEN,
-        population_size=POP,
-        crossover_rate=crossover_rate,
-        mutation_rate=mutation_rate,
-        elitism_size=EL_S
+    # Find best individual
+    best_schedule = max(
+        population,
+        key=fitness_function
     )
 
-    remaining_slots = (
-        len(all_time_slots) - len(initial_best_schedule)
-    )
+    return best_schedule, best_history
 
-    final_schedule = (
-        initial_best_schedule
-        + genetic_schedule[:remaining_slots]
-    )
 
-    total_rating = fitness_function(final_schedule)
+
+
+def generate_full_schedule(best_schedule):
+
+    # The GA produces an arrangement of 10 programmes.
+    # The first 8 programmes are repeated to fill
+    # the remaining 8 time slots.
+
+    full_schedule = best_schedule + best_schedule[:8]
+
+    return full_schedule
+
+
+
+
+def create_schedule_table(schedule):
 
     schedule_data = []
 
-    for time_slot, program in enumerate(final_schedule):
+    for index, program in enumerate(schedule):
+
+        hour = TIME_SLOTS[index]
+
+        audience_rating = ratings[program][index]
 
         schedule_data.append({
-            "Time": f"{all_time_slots[time_slot]:02d}:00",
-            "Program": program,
-            "Rating": ratings[program][time_slot]
+            "Time": f"{hour:02d}:00",
+            "Programme": program,
+            "Audience Rating": audience_rating
         })
 
-    return total_rating, pd.DataFrame(schedule_data)
+    return pd.DataFrame(schedule_data)
 
 
-# ==========================================
-# 11. STREAMLIT INTERFACE
-# ==========================================
-
-st.divider()
-
-st.subheader("Experiment Parameters")
+st.header("⚙️ Experiment Configuration")
 
 st.write(
-    "Enter different crossover and mutation rates "
+    "Adjust the crossover rate and mutation rate "
     "for each experiment."
 )
 
@@ -249,198 +266,219 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
 
-    st.markdown("### Trial 1")
+    st.subheader("Experiment 1")
 
     co1 = st.slider(
-        "Crossover Rate - Trial 1",
-        min_value=0.0,
-        max_value=0.95,
-        value=0.50,
-        step=0.05
+        "Crossover Rate",
+        0.0, 0.95, 0.50, 0.05,
+        key="co1"
     )
 
     mut1 = st.slider(
-        "Mutation Rate - Trial 1",
-        min_value=0.01,
-        max_value=0.05,
-        value=0.01,
-        step=0.01
+        "Mutation Rate",
+        0.01, 0.20, 0.05, 0.01,
+        key="mut1"
     )
 
 
 with col2:
 
-    st.markdown("### Trial 2")
+    st.subheader("Experiment 2")
 
     co2 = st.slider(
-        "Crossover Rate - Trial 2",
-        min_value=0.0,
-        max_value=0.95,
-        value=0.80,
-        step=0.05
+        "Crossover Rate",
+        0.0, 0.95, 0.80, 0.05,
+        key="co2"
     )
 
     mut2 = st.slider(
-        "Mutation Rate - Trial 2",
-        min_value=0.01,
-        max_value=0.05,
-        value=0.03,
-        step=0.01
+        "Mutation Rate",
+        0.01, 0.20, 0.10, 0.01,
+        key="mut2"
     )
 
 
 with col3:
 
-    st.markdown("### Trial 3")
+    st.subheader("Experiment 3")
 
     co3 = st.slider(
-        "Crossover Rate - Trial 3",
-        min_value=0.0,
-        max_value=0.95,
-        value=0.95,
-        step=0.05
+        "Crossover Rate",
+        0.0, 0.95, 0.95, 0.05,
+        key="co3"
     )
 
     mut3 = st.slider(
-        "Mutation Rate - Trial 3",
-        min_value=0.01,
-        max_value=0.05,
-        value=0.05,
-        step=0.01
+        "Mutation Rate",
+        0.01, 0.20, 0.20, 0.01,
+        key="mut3"
     )
 
 
-st.divider()
-
 if st.button(
-    "▶ Run Genetic Algorithm",
-    type="primary",
-    use_container_width=True
+    "🚀 Run All Experiments",
+    type="primary"
 ):
 
-    experiments = [
-        ("Trial 1", co1, mut1),
-        ("Trial 2", co2, mut2),
-        ("Trial 3", co3, mut3)
+    experiment_parameters = [
+        (co1, mut1),
+        (co2, mut2),
+        (co3, mut3)
     ]
 
     results = []
 
-    progress = st.progress(0)
+    for i, (co_rate, mut_rate) in enumerate(
+        experiment_parameters
+    ):
 
-    for index, (trial_name, co_rate, mut_rate) in enumerate(experiments):
+        with st.spinner(
+            f"Running Experiment {i + 1}..."
+        ):
 
-        # Use a consistent random seed for comparison
-        random.seed(42)
+            best_schedule, history = genetic_algorithm(
+                co_rate,
+                mut_rate,
+                seed=42 + i
+            )
 
-        total_rating, schedule_table = run_experiment(
-            co_rate,
-            mut_rate
-        )
+            full_schedule = generate_full_schedule(
+                best_schedule
+            )
 
-        results.append({
-            "Trial": trial_name,
-            "Crossover Rate": co_rate,
-            "Mutation Rate": mut_rate,
-            "Total Rating": total_rating,
-            "Schedule": schedule_table
-        })
+            schedule_df = create_schedule_table(
+                full_schedule
+            )
 
-        progress.progress((index + 1) / 3)
+            total_rating = schedule_df[
+                "Audience Rating"
+            ].sum()
 
-    st.success("All three experiments completed!")
+            results.append({
+                "Experiment": f"Experiment {i + 1}",
+                "Crossover Rate": co_rate,
+                "Mutation Rate": mut_rate,
+                "Total Rating": round(total_rating, 2),
+                "Schedule": schedule_df,
+                "History": history
+            })
 
-    st.subheader("Experiment Comparison")
 
-    comparison_data = []
 
-    for result in results:
+    st.success("All experiments completed!")
 
-        comparison_data.append({
-            "Trial": result["Trial"],
+    st.header("📊 Experimental Results")
+
+    comparison = pd.DataFrame([
+        {
+            "Experiment": result["Experiment"],
             "Crossover Rate": result["Crossover Rate"],
             "Mutation Rate": result["Mutation Rate"],
             "Total Rating": result["Total Rating"]
-        })
-
-    comparison_table = pd.DataFrame(comparison_data)
+        }
+        for result in results
+    ])
 
     st.dataframe(
-        comparison_table,
+        comparison,
         use_container_width=True,
         hide_index=True
     )
 
 
-    st.subheader("Generated Television Schedules")
 
-    for result in results:
-
-        st.markdown(f"### {result['Trial']}")
-
-        st.write(
-            f"Crossover Rate: {result['Crossover Rate']} | "
-            f"Mutation Rate: {result['Mutation Rate']}"
-        )
-
-        st.metric(
-            "Total Rating",
-            f"{result['Total Rating']:.2f}"
-        )
-
-        st.dataframe(
-            result["Schedule"],
-            use_container_width=True,
-            hide_index=True
-        )
-
-  
-    best_trial = max(
+    best_result = max(
         results,
         key=lambda result: result["Total Rating"]
     )
 
-    st.divider()
+    st.header("🏆 Best Experiment")
 
-    st.subheader("Best Performing Trial")
-
-    st.success(
-        f"Best Result: {best_trial['Trial']}"
+    st.metric(
+        label="Highest Total Audience Rating",
+        value=best_result["Total Rating"]
     )
 
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric(
-        "Crossover Rate",
-        best_trial["Crossover Rate"]
+    st.write(
+        f"**Experiment:** {best_result['Experiment']}"
     )
 
-    col2.metric(
-        "Mutation Rate",
-        best_trial["Mutation Rate"]
+    st.write(
+        f"**Crossover Rate:** "
+        f"{best_result['Crossover Rate']}"
     )
 
-    col3.metric(
-        "Highest Total Rating",
-        f"{best_trial['Total Rating']:.2f}"
+    st.write(
+        f"**Mutation Rate:** "
+        f"{best_result['Mutation Rate']}"
     )
 
-    st.subheader("Download Results")
 
-    csv_results = comparison_table.to_csv(
+
+    st.header("📺 Generated TV Schedules")
+
+    for result in results:
+
+        with st.expander(
+            f"{result['Experiment']} "
+            f"- Total Rating: {result['Total Rating']}"
+        ):
+
+            st.dataframe(
+                result["Schedule"],
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.subheader("Fitness History")
+
+            history_df = pd.DataFrame({
+                "Generation": range(1, GEN + 1),
+                "Best Fitness": result["History"]
+            })
+
+            st.line_chart(
+                history_df,
+                x="Generation",
+                y="Best Fitness"
+            )
+
+
+    st.header("📥 Download Experiment Results")
+
+    download_df = pd.concat(
+        [
+            result["Schedule"].assign(
+                Experiment=result["Experiment"]
+            )
+            for result in results
+        ],
+        ignore_index=True
+    )
+
+    csv_data = download_df.to_csv(
         index=False
     ).encode("utf-8")
 
     st.download_button(
-        label="Download Comparison Results",
-        data=csv_results,
-        file_name="GA_experiment_results.csv",
+        label="Download All Schedules (CSV)",
+        data=csv_data,
+        file_name="tv_scheduling_results.csv",
         mime="text/csv"
     )
 
-else:
 
-    st.info(
-        "Adjust the parameters above and click "
-        "'Run Genetic Algorithm' to generate the schedules."
+with st.expander("📄 View Modified Dataset"):
+
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True
     )
+
+st.divider()
+
+st.caption(
+    "TV Scheduling Using Genetic Algorithm | "
+    "Evolutionary Computing Assignment"
+)
