@@ -1,4 +1,4 @@
-
+c
 import streamlit as st
 import pandas as pd
 import random
@@ -85,49 +85,6 @@ st.success("Dataset loaded successfully!")
 
 
 TIME_SLOTS = list(range(6, 24))
-
-
-
-@st.cache_data
-def load_dataset():
-
-    if not os.path.exists(CSV_FILE):
-        return None
-
-    df = pd.read_csv(CSV_FILE)
-
-    ratings = {}
-
-    for _, row in df.iterrows():
-
-        program = row["Type of Program"]
-
-        ratings[program] = [
-            float(row[f"Hour {hour}"])
-            for hour in TIME_SLOTS
-        ]
-
-    return df, ratings
-
-
-dataset = load_dataset()
-
-if dataset is None:
-
-    st.error(
-        f"Dataset '{CSV_FILE}' was not found. "
-        "Please upload the CSV file into the same "
-        "GitHub repository as app.py."
-    )
-
-    st.stop()
-
-
-df, ratings = dataset
-
-all_programs = list(ratings.keys())
-
-
 
 
 def fitness_function(schedule):
